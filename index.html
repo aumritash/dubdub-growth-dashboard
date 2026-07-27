@@ -248,7 +248,7 @@
 
   /* Shared data (optional). Paste a Supabase URL + anon key here to sync across everyone
      with the link. Leave blank to keep data in this browser only. */
-  var CONFIG={ SUPABASE_URL:"", SUPABASE_ANON_KEY:"", TABLE:"dashboard_state", ROW_ID:1 };
+  var CONFIG={ SUPABASE_URL:"https://ntlsgksuoramumdmdezb.supabase.co", SUPABASE_ANON_KEY:"sb_publishable_XAFKNTx_seIOTAPFxRODJQ_GSReWiFe", TABLE:"dashboard_state", ROW_ID:1 };
   var REMOTE=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
   var lastLocalEdit=0, pushTimer=null;
 
@@ -406,6 +406,8 @@
   function load(){ try{var r=localStorage.getItem(STORE); if(r){var p=JSON.parse(r); if(p&&p.months)return p;}}catch(e){} return seed(); }
   function migrate(s){
     if(!s.focus) s.focus={};
+    if(!s.months||typeof s.months!=="object") s.months={};
+    if(!Array.isArray(s.order)) s.order=Object.keys(s.months).sort();
     CHANNELS.forEach(function(c){ if(s.focus[c]===undefined) s.focus[c]=false; });
     if(s.focus.tests===undefined) s.focus.tests=false;
     if(!Array.isArray(s.tests)) s.tests=[];
@@ -433,8 +435,9 @@
   function remotePull(initial){
     fetch(CONFIG.SUPABASE_URL+"/rest/v1/"+CONFIG.TABLE+"?id=eq."+CONFIG.ROW_ID+"&select=data", {headers:sbHeaders()})
     .then(function(r){return r.json();}).then(function(rows){
-      if(rows&&rows[0]&&rows[0].data){
-        var inc=rows[0].data;
+      var inc=rows&&rows[0]&&rows[0].data;
+      var hasData=inc&&inc.months&&Object.keys(inc.months).length;
+      if(hasData){
         if(Date.now()-lastLocalEdit>3000 && JSON.stringify(inc)!==JSON.stringify(state)){
           state=migrate(inc); if(!state.months[curMonth])curMonth=state.order[state.order.length-1]||curMonth; render();
         }
