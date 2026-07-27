@@ -320,14 +320,6 @@
       {k:"activeMembers",label:"Active members",t:"int"},
       {k:"messages",label:"Messages sent",t:"int"}
     ]},
-    meta:{name:"Meta Ads", g:"META", collection:true, itemsKey:"campaigns", entity:"campaign",
-      cadence:"Monthly · per campaign", metrics:[
-      {k:"spend",label:"Spend",t:"spend"},
-      {k:"impressions",label:"Impressions",t:"int"},
-      {k:"clicks",label:"Clicks",t:"int"},
-      {k:"installs",label:"Installs",t:"int"},
-      {k:"cpi",label:"CPI",t:"cpi"}
-    ]},
     google:{name:"Google Ads", g:"GADS", collection:true, itemsKey:"campaigns", entity:"campaign",
       cadence:"Monthly · per campaign", metrics:[
       {k:"spend",label:"Spend",t:"spend"},
@@ -371,14 +363,13 @@
     {k:"d3",label:"D3",t:"cpi"},
     {k:"d7",label:"D7",t:"cpi"}
   ];
-  ["meta","google","apple"].forEach(function(id){ SOCIAL[id].metrics=SOCIAL[id].metrics.concat(DEPTH_METRICS); });
+  ["google","apple"].forEach(function(id){ SOCIAL[id].metrics=SOCIAL[id].metrics.concat(DEPTH_METRICS); });
   var CHANNELS=["cost"].concat(Object.keys(SOCIAL));
   var TABS=[
     {id:"home",label:"Home"},
     {id:"changes",label:"What changed"},
     {id:"tests",label:"Tests"},
-    {id:"cost",label:"Cost per depth", g:"CPD"},
-    {id:"meta",label:"Meta Ads", g:"META"},
+    {id:"cost",label:"Meta Ads", g:"META"},
     {id:"google",label:"Google Ads", g:"GADS"},
     {id:"apple",label:"Apple Ads", g:"ASA"},
     {id:"influencers",label:"Influencers", g:"INF"},
@@ -519,13 +510,28 @@
     var db=document.getElementById("dataBtn"); if(db) db.classList.toggle("on", tab==="data");
   }
 
+  function channelSpends(mo){
+    var c=costAgg(mo);
+    return [
+      {name:"Meta Ads", v:c.totalSpend},
+      {name:"Google Ads", v:collTotal(mo,"google","spend")},
+      {name:"Apple Ads", v:collTotal(mo,"apple","spend")},
+      {name:"Influencers", v:collTotal(mo,"influencers","spend")},
+      {name:"Collaborations", v:collTotal(mo,"collabs","spend")}
+    ];
+  }
+  function totalSpendAll(mo){ return sum(channelSpends(mo).map(function(x){return x.v;})); }
   function homeView(){
-    var mo=M(),c=costAgg(mo),pk=prevMonthKey(curMonth),pc=pk?costAgg(state.months[pk]):null;
+    var mo=M(),c=costAgg(mo),pk=prevMonthKey(curMonth),pmo=pk?state.months[pk]:null;
+    var chSpend=channelSpends(mo), totalAll=totalSpendAll(mo);
+    var avgAll=(totalAll!=null&&c.days)?totalAll/c.days:null;
+    var prevTotal=pmo?totalSpendAll(pmo):null;
     var a="";
-    a+=kpiCard("Avg spend / day",c.avgDay,"spend",{auto:!c.avgManual,note:c.days?("across "+c.days+" days"):"no data",delta:pc?deltaPill(c.avgDay,pc.avgDay,false):null});
-    a+=kpiCard("1st Play · Android",c.depth.p1.a,"cpi",{auto:true,note:"monthly avg"});
-    a+=kpiCard("1st Play · iOS",c.depth.p1.i,"cpi",{auto:true,note:"monthly avg"});
-    a+=kpiCard("Total spend",c.totalSpend,"spend",{auto:true,note:"month to date"});
+    a+=kpiCard("Total spend · all channels", totalAll,"spend",{auto:true, note:"month to date", delta:prevTotal!=null?deltaPill(totalAll,prevTotal,false):null});
+    a+=kpiCard("Avg spend / day", avgAll,"spend",{auto:true, note:c.days?("blended · "+c.days+" days"):"no data"});
+    a+=kpiCard("Meta · 1st Play Android", c.depth.p1.a,"cpi",{auto:true,note:"monthly avg"});
+    a+=kpiCard("Meta · 1st Play iOS", c.depth.p1.i,"cpi",{auto:true,note:"monthly avg"});
+    var brk=chSpend.map(function(x){ return kpiCard(x.name, x.v, "spend", {auto:true, note:"this month"}); }).join("");
     var ig=n(mo.instagram.followers),rd=collTotal(mo,"reddit","members"),wa=collTotal(mo,"whatsapp","members"),xx=n(mo.x.followers),dc=n(mo.discord.members);
     var comm="";
     comm+=kpiCard("Total community",sum([ig,rd,wa,xx,dc]),"int",{auto:true,note:"across all channels"});
@@ -533,9 +539,13 @@
     comm+=kpiCard("Reddit members",rd,"int",{auto:true,note:"all subreddits"});
     comm+=kpiCard("WhatsApp members",wa,"int",{auto:true,note:"all groups"});
     var spendChart=c.days>1?chartSpec("home-spend",mo.cost.daily.map(function(r){return fmtDay(r.date);}),
-      [{name:"Spend",color:"var(--accent)",vals:mo.cost.daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Daily spend"):"";
-    return '<p class="section-label">Acquisition <span class="sub">'+monthLabel(curMonth)+'</span>'+focusChip(state.focus.cost)+'</p>'+
-      '<div class="grid g4">'+a+'</div>'+spendChart+
+      [{name:"Spend",color:"var(--accent)",vals:mo.cost.daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Meta daily spend"):"";
+    return '<p class="section-label">Spend <span class="sub">'+monthLabel(curMonth)+' · every channel combined</span></p>'+
+      '<div class="grid g4">'+a+'</div>'+
+      '<div style="height:18px"></div>'+
+      '<p class="section-label">Spend by channel</p>'+
+      '<div class="grid gauto">'+brk+'</div>'+
+      spendChart+
       '<div style="height:26px"></div>'+
       '<p class="section-label">Community &amp; reach <span class="sub">owned-audience proxy for brand — no recall survey yet</span></p>'+
       '<div class="grid g4">'+comm+'</div>';
@@ -607,10 +617,10 @@
       body:"All five channel tabs are empty. Filling them gives the owned-audience proxy for brand until a recall study exists."});
     else if(filled.length<chans.length) out.push({kind:"gap",tag:"Data gap",head:"Community tracking is partial",
       body:"Tracked: "+filled.map(function(id){return SOCIAL[id].name;}).join(", ")+". Still empty: "+chans.filter(function(id){return filled.indexOf(id)<0;}).map(function(id){return SOCIAL[id].name;}).join(", ")+"."});
-    var paid=["meta","google","apple"];
+    var paid=["google","apple"];
     var paidFilled=paid.filter(function(id){ return items(mo,id).some(function(it){return SOCIAL[id].metrics.some(function(m){return n(it[m.k])!=null;});}); });
-    if(paidFilled.length===0) out.push({kind:"gap",tag:"Data gap",head:"Paid spend isn't broken out by channel yet",
-      body:"Acquisition shows total spend only. Add Meta, Google or Apple campaigns to see which channel is driving the cost."});
+    if(paidFilled.length===0) out.push({kind:"gap",tag:"Data gap",head:"Only Meta spend is tracked so far",
+      body:"Google Ads and Apple Ads are still empty. Add their campaigns to see the full paid mix add up on Home."});
     return out;
   }
 
@@ -685,7 +695,7 @@
     cards+=kpiCard("Total spend",c.totalSpend,"spend",{auto:true,note:"month to date"});
     cards+=kpiCard("1st Play · Android",c.depth.p1.a,"cpi",{auto:true,note:c.depth.p1.i!=null?("iOS "+fmt(c.depth.p1.i,"cpi")):"Android only"});
     cards+=kpiCard("D1 · Android",c.depth.d1.a,"cpi",{auto:true,note:c.depth.d1.i!=null?("iOS "+fmt(c.depth.d1.i,"cpi")):"Android only"});
-    var head='<p class="section-label">Cost per depth <span class="sub">'+monthLabel(curMonth)+' · cost to buy a user to each milestone</span>'+focusChip(state.focus.cost)+'</p>';
+    var head='<p class="section-label">Meta Ads <span class="sub">'+monthLabel(curMonth)+' · spend &amp; cost to buy a user to each milestone</span>'+focusChip(state.focus.cost)+'</p>';
     var daily=mo.cost.daily||[];
     if(daily.length<2)return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily acquisition data for "+monthLabel(curMonth),"Add rows in the Data tab.");
     var xs=daily.map(function(r){return fmtDay(r.date);});
@@ -753,7 +763,7 @@
       '<button class="btn ghost" id="clearMonth">Clear this month</button></div>';
 
     /* Acquisition */
-    out+='<div class="panel"><div class="panel-head"><h3>Acquisition · daily</h3>'+focBtn('data-focus-ch="cost"',state.focus.cost)+'</div>'+
+    out+='<div class="panel"><div class="panel-head"><h3>Meta Ads · daily</h3>'+focBtn('data-focus-ch="cost"',state.focus.cost)+'</div>'+
       '<p class="hint">Spend + cost-per-depth by platform (A = Android, i = iOS). Avg spend/day computes from this; override below to set it by hand.</p>'+
       '<div class="table-scroll"><table><thead><tr><th>Date</th><th>Spend</th>'+
       '<th>1st A</th><th>1st i</th><th>4th A</th><th>4th i</th><th>20th A</th><th>20th i</th>'+
