@@ -146,6 +146,22 @@
   .note-text{width:100%; background:transparent; border:1px solid transparent; border-radius:8px; color:var(--ink); font-family:var(--ui); font-size:13.5px; line-height:1.5; padding:6px 8px; resize:vertical; min-height:44px}
   .note-text:hover{border-color:var(--border)}
   .note-text:focus{outline:none; border-color:var(--accent); background:var(--bg)}
+  .test-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px 14px 20px; position:relative; overflow:hidden; margin-bottom:12px}
+  .test-card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--faint)}
+  .test-card.running::before{background:var(--accent-2)}
+  .test-card.shipped::before{background:var(--good)}
+  .test-card.reverted::before{background:var(--bad)}
+  .test-card.inconclusive::before{background:var(--faint)}
+  .test-head{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap}
+  .test-name{flex:1; min-width:150px; background:transparent; border:1px solid transparent; border-radius:8px; color:var(--ink); font-family:var(--ui); font-weight:700; font-size:15px; padding:6px 8px}
+  .test-name:hover{border-color:var(--border)} .test-name:focus{outline:none; border-color:var(--accent); background:var(--bg)}
+  .test-status{background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--ink); font-family:var(--ui); font-size:12px; font-weight:600; padding:6px 8px; cursor:pointer}
+  .test-status:focus{outline:none; border-color:var(--accent)}
+  .test-area{width:100%; background:transparent; border:1px solid transparent; border-radius:8px; color:var(--muted); font-family:var(--ui); font-size:12.5px; padding:5px 8px; margin-bottom:6px}
+  .test-area:hover{border-color:var(--border)} .test-area:focus{outline:none; border-color:var(--accent); color:var(--ink); background:var(--bg)}
+  .test-card>label{display:block; font-size:11px; font-weight:600; color:var(--muted); margin:7px 2px 3px}
+  .test-card textarea{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; color:var(--ink); font-family:var(--ui); font-size:13.5px; line-height:1.5; padding:8px 10px; resize:vertical; min-height:42px}
+  .test-card textarea:focus{outline:none; border-color:var(--accent)}
 
   .sub-row{display:flex; align-items:center; gap:10px; margin:0 0 11px; flex-wrap:wrap}
   .sub-row h4{margin:0; font-size:14px; font-weight:700}
@@ -360,6 +376,7 @@
   var TABS=[
     {id:"home",label:"Home"},
     {id:"changes",label:"What changed"},
+    {id:"tests",label:"Tests"},
     {id:"cost",label:"Cost per depth", g:"CPD"},
     {id:"meta",label:"Meta Ads", g:"META"},
     {id:"google",label:"Google Ads", g:"GADS"},
@@ -376,7 +393,8 @@
   /* State */
   var state=migrate(load()), curMonth=state.order[state.order.length-1]||"2026-07", tab="home";
   function seed(){ return {order:["2026-07"],
-    focus:{cost:false,instagram:false,reddit:false,whatsapp:false,x:false,discord:false},
+    focus:{cost:false,instagram:false,reddit:false,whatsapp:false,x:false,discord:false,tests:false},
+    tests:[],
     months:{"2026-07":{ cost:{daily:julyDaily(),spendOverride:null}, instagram:{}, x:{}, discord:{},
       reddit:{subs:[{name:"r/dubdub",focus:false}]}, whatsapp:{groups:[{name:"Beta community",focus:false}]},
       meta:{campaigns:[]}, google:{campaigns:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
@@ -389,6 +407,8 @@
   function migrate(s){
     if(!s.focus) s.focus={};
     CHANNELS.forEach(function(c){ if(s.focus[c]===undefined) s.focus[c]=false; });
+    if(s.focus.tests===undefined) s.focus.tests=false;
+    if(!Array.isArray(s.tests)) s.tests=[];
     Object.keys(s.months||{}).forEach(function(k){
       var mo=s.months[k];
       mo.cost=mo.cost||{daily:[],spendOverride:null};
@@ -479,6 +499,7 @@
     var v=document.getElementById("view");
     if(tab==="home")v.innerHTML=homeView();
     else if(tab==="changes"){v.innerHTML=changesView(); wireChanges();}
+    else if(tab==="tests"){v.innerHTML=testsView(); wireTests();}
     else if(tab==="cost"){v.innerHTML=costView(); wireCost();}
     else if(tab==="data"){v.innerHTML=dataView(); wireData();}
     else if(SOCIAL[tab]&&SOCIAL[tab].collection)v.innerHTML=collectionView(tab);
@@ -614,6 +635,44 @@
     if(add) add.onclick=function(){ mo.notes.unshift({ts:Date.now(),text:""}); save(); render(); var ta=document.querySelector('.note-text[data-note-idx="0"]'); if(ta)ta.focus(); };
     document.querySelectorAll('.note-text').forEach(function(ta){ ta.oninput=function(){ var i=+ta.getAttribute("data-note-idx"); if(mo.notes[i]){mo.notes[i].text=ta.value; save();} }; });
     document.querySelectorAll('[data-note-del]').forEach(function(b){ b.onclick=function(){ mo.notes.splice(+b.getAttribute("data-note-del"),1); save(); render(); }; });
+  }
+
+  /* Tests — experiments log, one sub-entry per test (global, not per-month) */
+  var TEST_STATUS=["Running","Shipped","Reverted","Inconclusive"];
+  function testsView(){
+    var head='<p class="section-label">Tests <span class="sub">experiments you\'ve run — what worked, what didn\'t</span>'+focusChip(state.focus.tests)+'</p>';
+    var bar='<div class="actions" style="padding:0 0 12px"><button class="btn primary" id="addTest">+ Add test</button>'+
+      focBtn('id="testFocus"',state.focus.tests)+'</div>';
+    var tests=state.tests||[];
+    if(!tests.length) return head+bar+'<div class="empty-state"><b>No tests logged yet</b>Add the experiments you\'ve run — creative tests, targeting changes, onboarding tweaks — and track how each one went.</div>';
+    var cards=tests.map(function(t,i){
+      var cls=(t.status||"Running").toLowerCase();
+      var opts=TEST_STATUS.map(function(s){return '<option'+((t.status||"Running")===s?" selected":"")+'>'+s+'</option>';}).join("");
+      return '<div class="test-card '+cls+'">'+
+        '<div class="test-head">'+
+          '<input class="test-name" data-ti="'+i+'" data-tk="name" value="'+(t.name||"").replace(/"/g,"&quot;")+'" placeholder="Test name">'+
+          '<select class="test-status" data-ti="'+i+'">'+opts+'</select>'+
+          focBtn('data-tfocus="'+i+'"',t.focus)+
+          '<button class="del" data-tdel="'+i+'" title="Delete test">✕</button>'+
+        '</div>'+
+        '<input class="test-area" data-ti="'+i+'" data-tk="area" value="'+(t.area||"").replace(/"/g,"&quot;")+'" placeholder="Area — e.g. Meta creative, Onboarding, Reddit post">'+
+        '<label>Hypothesis / what we tested</label>'+
+        '<textarea data-ti="'+i+'" data-tk="hypothesis" rows="2" placeholder="What did you change, and what did you expect?">'+(t.hypothesis||"").replace(/</g,"&lt;")+'</textarea>'+
+        '<label>Result / learning</label>'+
+        '<textarea data-ti="'+i+'" data-tk="result" rows="2" placeholder="What happened? What did you learn?">'+(t.result||"").replace(/</g,"&lt;")+'</textarea>'+
+      '</div>';
+    }).join("");
+    return head+bar+cards;
+  }
+  function wireTests(){
+    if(!state.tests)state.tests=[];
+    var add=document.getElementById("addTest");
+    if(add)add.onclick=function(){ state.tests.unshift({name:"",status:"Running",area:"",hypothesis:"",result:"",ts:Date.now(),focus:false}); save(); render(); var el=document.querySelector('.test-name[data-ti="0"]'); if(el)el.focus(); };
+    var tf=document.getElementById("testFocus"); if(tf)tf.onclick=function(){ state.focus.tests=!state.focus.tests; save(); render(); };
+    document.querySelectorAll('.test-card [data-tk]').forEach(function(el){ el.oninput=function(){ var i=+el.getAttribute("data-ti"),k=el.getAttribute("data-tk"); if(state.tests[i]){state.tests[i][k]=el.value; save();} }; });
+    document.querySelectorAll('.test-status').forEach(function(sel){ sel.onchange=function(){ var i=+sel.getAttribute("data-ti"); if(state.tests[i]){state.tests[i].status=sel.value; save(); render();} }; });
+    document.querySelectorAll('[data-tfocus]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute("data-tfocus"); state.tests[i].focus=!state.tests[i].focus; save(); render(); }; });
+    document.querySelectorAll('[data-tdel]').forEach(function(b){ b.onclick=function(){ state.tests.splice(+b.getAttribute("data-tdel"),1); save(); render(); }; });
   }
 
   var costState={act:"p1",ret:"d1"};
