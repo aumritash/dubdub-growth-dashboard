@@ -60,6 +60,7 @@
   .month-nav .lbl{font-size:13.5px; font-weight:700; padding:0 8px; min-width:96px; text-align:center; font-variant-numeric:tabular-nums}
   .icon-btn{display:inline-grid; place-items:center; width:36px; height:36px; cursor:pointer; background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--ink-2); font-size:15px}
   .icon-btn:hover{border-color:var(--accent); color:var(--accent)}
+  .icon-btn.on{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
 
   .tabs{display:flex; align-items:center; gap:4px; margin:20px 0 22px; border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
@@ -207,6 +208,7 @@
         <span class="lbl" id="mLabel">Jul 2026</span>
         <button id="mNext" aria-label="Next month">›</button>
       </div>
+      <button class="icon-btn" id="dataBtn" title="Data — manual entry" aria-label="Data">⚙</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◑</button>
     </div>
   </header>
@@ -227,6 +229,12 @@
 (function(){
   "use strict";
   var CUR="₹", STORE="dubdub-growth-v2";
+
+  /* Shared data (optional). Paste a Supabase URL + anon key here to sync across everyone
+     with the link. Leave blank to keep data in this browser only. */
+  var CONFIG={ SUPABASE_URL:"", SUPABASE_ANON_KEY:"", TABLE:"dashboard_state", ROW_ID:1 };
+  var REMOTE=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
+  var lastLocalEdit=0, pushTimer=null;
 
   /* July acquisition, imported from PDF: [date,spend, p1A,p1I,p4A,p4I,p20A,p20I,d1A,d1I,d3A,d3I,d7A,d7I] */
   var JUL=[
@@ -395,7 +403,24 @@
     });
     return s;
   }
-  function save(){ try{localStorage.setItem(STORE,JSON.stringify(state));}catch(e){} }
+  function save(){ lastLocalEdit=Date.now(); try{localStorage.setItem(STORE,JSON.stringify(state));}catch(e){} if(REMOTE) remotePush(); }
+  function sbHeaders(extra){ var h={apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:"Bearer "+CONFIG.SUPABASE_ANON_KEY}; if(extra)for(var k in extra)h[k]=extra[k]; return h; }
+  function remotePush(){ clearTimeout(pushTimer); pushTimer=setTimeout(function(){
+    fetch(CONFIG.SUPABASE_URL+"/rest/v1/"+CONFIG.TABLE, {method:"POST",
+      headers:sbHeaders({"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}),
+      body:JSON.stringify([{id:CONFIG.ROW_ID,data:state,updated_at:new Date().toISOString()}])}).catch(function(){});
+  }, 800); }
+  function remotePull(initial){
+    fetch(CONFIG.SUPABASE_URL+"/rest/v1/"+CONFIG.TABLE+"?id=eq."+CONFIG.ROW_ID+"&select=data", {headers:sbHeaders()})
+    .then(function(r){return r.json();}).then(function(rows){
+      if(rows&&rows[0]&&rows[0].data){
+        var inc=rows[0].data;
+        if(Date.now()-lastLocalEdit>3000 && JSON.stringify(inc)!==JSON.stringify(state)){
+          state=migrate(inc); if(!state.months[curMonth])curMonth=state.order[state.order.length-1]||curMonth; render();
+        }
+      } else if(initial){ remotePush(); }
+    }).catch(function(){});
+  }
   function M(){ return state.months[curMonth]; }
   function items(mo,id){ var cfg=SOCIAL[id]; if(!mo[id])mo[id]={}; if(!mo[id][cfg.itemsKey])mo[id][cfg.itemsKey]=[]; return mo[id][cfg.itemsKey]; }
   function collTotal(mo,id,key){ return sum(items(mo,id).map(function(it){return n(it[key]);})); }
@@ -467,8 +492,7 @@
       b.innerHTML=t.label+(t.g?' <span class="g">'+t.g+'</span>':"")+((state.focus[t.id])?' <span class="fdot" title="In focus"></span>':"");
       b.onclick=function(){tab=t.id; render();}; nav.appendChild(b);
     });
-    var d=document.createElement("button"); d.className="tab tab-data"+(tab==="data"?" active":"");
-    d.innerHTML='⚙ Data'; d.title="Manual entry (hidden)"; d.onclick=function(){tab="data"; render();}; nav.appendChild(d);
+    var db=document.getElementById("dataBtn"); if(db) db.classList.toggle("on", tab==="data");
   }
 
   function homeView(){
@@ -805,9 +829,11 @@
   (function(){var s=null; try{s=localStorage.getItem("dubdub-theme");}catch(e){} if(s)document.documentElement.setAttribute("data-theme",s);
     document.getElementById("themeBtn").onclick=function(){var c=document.documentElement.getAttribute("data-theme"); if(!c)c=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
       var nx=c==="dark"?"light":"dark"; document.documentElement.setAttribute("data-theme",nx); try{localStorage.setItem("dubdub-theme",nx);}catch(e){} render();};})();
+  document.getElementById("dataBtn").onclick=function(){ tab="data"; render(); };
   document.getElementById("mPrev").onclick=function(){var i=state.order.indexOf(curMonth); if(i>0){curMonth=state.order[i-1]; render();}};
   document.getElementById("mNext").onclick=function(){var i=state.order.indexOf(curMonth); if(i<state.order.length-1){curMonth=state.order[i+1]; render();}};
   render();
+  if(REMOTE){ remotePull(true); setInterval(function(){ remotePull(false); }, 8000); }
 })();
 </script>
 
