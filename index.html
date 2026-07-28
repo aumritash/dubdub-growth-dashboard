@@ -285,6 +285,12 @@
   function julyDaily(){ return JUL.map(function(r){ return {date:r[0],spend:r[1],
     p1_a:r[2],p1_i:r[3],p4_a:r[4],p4_i:r[5],p20_a:r[6],p20_i:r[7],
     d1_a:r[8],d1_i:r[9],d3_a:r[10],d3_i:r[11],d7_a:r[12],d7_i:r[13]}; }); }
+  // Google Ads (UAC_FA_July) daily: [date, spend, installs]
+  var GOOG=[
+    ["2026-07-02",1054.87,16],["2026-07-03",543.32,17],["2026-07-04",505.61,21],
+    ["2026-07-05",500.78,24],["2026-07-06",600.68,13],["2026-07-07",568.76,21],["2026-07-08",541.66,20]
+  ];
+  function googleDaily(){ return GOOG.map(function(r){ return {date:r[0],spend:r[1],installs:r[2]}; }); }
 
   /* Channel config */
   var SOCIAL={
@@ -326,12 +332,6 @@
       {k:"activeMembers",label:"Active members",t:"int"},
       {k:"messages",label:"Messages sent",t:"int"}
     ]},
-    google:{name:"Google Ads", g:"GADS", collection:true, itemsKey:"campaigns", entity:"campaign",
-      cadence:"Monthly · per campaign · vs installs", metrics:[
-      {k:"spend",label:"Spend",t:"spend"},
-      {k:"installs",label:"Installs",t:"int"},
-      {k:"cpi",label:"Cost / install",t:"cpi"}
-    ]},
     apple:{name:"Apple Ads", g:"ASA", collection:true, itemsKey:"campaigns", entity:"campaign",
       cadence:"Monthly · per campaign", metrics:[
       {k:"spend",label:"Spend",t:"spend"},
@@ -368,7 +368,7 @@
     {k:"d7",label:"D7",t:"cpi"}
   ];
   ["apple"].forEach(function(id){ SOCIAL[id].metrics=SOCIAL[id].metrics.concat(DEPTH_METRICS); });
-  var CHANNELS=["cost"].concat(Object.keys(SOCIAL));
+  var CHANNELS=["cost","google"].concat(Object.keys(SOCIAL));
   var TABS=[
     {id:"home",label:"Home"},
     {id:"changes",label:"What changed"},
@@ -394,11 +394,11 @@
     model:defaultModel(),
     months:{"2026-07":{ cost:{daily:julyDaily(),spendOverride:null}, instagram:{}, x:{}, discord:{},
       reddit:{subs:[{name:"r/dubdub",focus:false}]}, whatsapp:{groups:[{name:"Beta community",focus:false}]},
-      meta:{campaigns:[]}, google:{campaigns:[{name:"UAC_FA_July",focus:false,spend:4315.68,installs:132,cpi:32.69}]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
+      meta:{campaigns:[]}, google:{daily:googleDaily()}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
       notes:[] }}}; }
   function blankMonth(){ return {cost:{daily:[],spendOverride:null}, instagram:{}, x:{}, discord:{},
     reddit:{subs:[]}, whatsapp:{groups:[]},
-    meta:{campaigns:[]}, google:{campaigns:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
+    meta:{campaigns:[]}, google:{daily:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
     notes:[]}; }
   function load(){ try{var r=localStorage.getItem(STORE); if(r){var p=JSON.parse(r); if(p&&p.months)return p;}}catch(e){} return seed(); }
   function migrate(s){
@@ -412,6 +412,7 @@
     Object.keys(s.months||{}).forEach(function(k){
       var mo=s.months[k];
       mo.cost=mo.cost||{daily:[],spendOverride:null};
+      if(!mo.google||!Array.isArray(mo.google.daily)) mo.google={daily:[]};
       mo.instagram=mo.instagram||{}; mo.x=mo.x||{}; mo.discord=mo.discord||{};
       if(mo.whatsapp && !mo.whatsapp.groups){ var old=mo.whatsapp; mo.whatsapp={groups:[]};
         if(old.members!=null||old.newMembers!=null) mo.whatsapp.groups.push({name:"Beta community",focus:false,
@@ -503,6 +504,7 @@
     else if(tab==="tests"){v.innerHTML=testsView(); wireTests();}
     else if(tab==="model"){v.innerHTML=modelView(); wireModel();}
     else if(tab==="cost"){v.innerHTML=costView(); wireCost();}
+    else if(tab==="google"){v.innerHTML=googleView();}
     else if(tab==="data"){v.innerHTML=dataView(); wireData();}
     else if(SOCIAL[tab]&&SOCIAL[tab].collection)v.innerHTML=collectionView(tab);
     else v.innerHTML=socialView(tab);
@@ -522,7 +524,7 @@
     var c=costAgg(mo);
     return [
       {name:"Meta Ads", v:c.totalSpend},
-      {name:"Google Ads", v:collTotal(mo,"google","spend")},
+      {name:"Google Ads", v:googleAgg(mo).spend},
       {name:"Apple Ads", v:collTotal(mo,"apple","spend")},
       {name:"Influencers", v:collTotal(mo,"influencers","spend")},
       {name:"Collaborations", v:collTotal(mo,"collabs","spend")}
@@ -625,10 +627,10 @@
       body:"All five channel tabs are empty. Filling them gives the owned-audience proxy for brand until a recall study exists."});
     else if(filled.length<chans.length) out.push({kind:"gap",tag:"Data gap",head:"Community tracking is partial",
       body:"Tracked: "+filled.map(function(id){return SOCIAL[id].name;}).join(", ")+". Still empty: "+chans.filter(function(id){return filled.indexOf(id)<0;}).map(function(id){return SOCIAL[id].name;}).join(", ")+"."});
-    var paid=["google","apple"];
-    var paidFilled=paid.filter(function(id){ return items(mo,id).some(function(it){return SOCIAL[id].metrics.some(function(m){return n(it[m.k])!=null;});}); });
-    if(paidFilled.length===0) out.push({kind:"gap",tag:"Data gap",head:"Only Meta spend is tracked so far",
-      body:"Google Ads and Apple Ads are still empty. Add their campaigns to see the full paid mix add up on Home."});
+    var googleHas=googleAgg(mo).spend!=null;
+    var appleHas=items(mo,"apple").some(function(it){return SOCIAL.apple.metrics.some(function(m){return n(it[m.k])!=null;});});
+    if(!googleHas && !appleHas) out.push({kind:"gap",tag:"Data gap",head:"Only Meta spend is tracked so far",
+      body:"Google Ads and Apple Ads are still empty. Add them to see the full paid mix add up on Home."});
     return out;
   }
 
@@ -737,7 +739,10 @@
 
     var out='<p class="section-label">Growth model <span class="sub">retention → DAU, required spend, and time-to-target · a target-setter, not a forecast</span></p>';
 
-    out+='<div class="panel"><div class="panel-head"><h3>Retention curve &amp; economics</h3><span class="cadence" style="color:var(--muted);background:var(--surface-2)">Σr = '+req.Sr.toFixed(1)+'</span></div>'+
+    var mc=costAgg(M());
+    out+='<div class="panel"><div class="panel-head"><h3>Retention curve &amp; economics</h3><span class="cadence" style="color:var(--muted);background:var(--surface-2)">Σr = '+req.Sr.toFixed(1)+'</span>'+
+      '<button class="btn ghost" id="pullMeta" style="margin-left:auto" title="Set CPIs to this month\'s Meta 1st-play averages">⤓ Pull CPIs from Meta'+
+      (mc.depth.p1.a!=null?' <span style="color:var(--faint);font-weight:400">('+fmt(mc.depth.p1.a,"cpi")+' / '+fmt(mc.depth.p1.i,"cpi")+')</span>':'')+'</button></div>'+
       '<div class="form-grid">'+
       minput("curve.d1","D1 retention","0–1")+minput("curve.d7","D7 retention","0–1")+minput("curve.d30","D30 retention","0–1")+
       minput("curve.floor","Long-term floor","0–1")+minput("curve.horizon","Horizon","days ≥30")+
@@ -785,6 +790,11 @@
     document.querySelectorAll('#view input[data-mpath]').forEach(function(inp){
       inp.onchange=function(){ var v=inp.value===""?0:Number(inp.value); if(!isNaN(v)){ mset(inp.getAttribute("data-mpath"),v); save(); render(); } };
     });
+    var pm=document.getElementById("pullMeta");
+    if(pm) pm.onclick=function(){ var c=costAgg(M()), changed=false;
+      if(c.depth.p1.a!=null){ mset("econ.cpiAndroid",Math.round(c.depth.p1.a*100)/100); changed=true; }
+      if(c.depth.p1.i!=null){ mset("econ.cpiIos",Math.round(c.depth.p1.i*100)/100); changed=true; }
+      if(changed){ save(); render(); } };
   }
 
   var costState={act:"p1",ret:"d1"};
@@ -814,6 +824,27 @@
     return '<button data-val="'+o[0]+'" class="'+(o[0]===cur?"on":"")+'">'+o[1]+'</button>';}).join("")+'</div>'; }
   function wireCost(){ document.querySelectorAll('.seg[data-seg]').forEach(function(s){
     s.querySelectorAll("button").forEach(function(b){ b.onclick=function(){costState[s.getAttribute("data-seg")]=b.getAttribute("data-val"); render();}; }); }); }
+
+  function googleAgg(mo){
+    var d=(mo.google&&mo.google.daily)||[];
+    var spend=sum(d.map(function(r){return n(r.spend);})), installs=sum(d.map(function(r){return n(r.installs);}));
+    return {daily:d.slice().sort(function(a,b){return a.date<b.date?-1:1;}), spend:spend, installs:installs,
+      cpi:(spend!=null&&installs)?spend/installs:null, days:d.filter(function(r){return n(r.spend)!=null;}).length};
+  }
+  function googleView(){
+    var mo=M(), g=googleAgg(mo);
+    var head='<p class="section-label">Google Ads <span class="sub">'+monthLabel(curMonth)+' · daily spend &amp; cost per install</span>'+focusChip(state.focus.google)+'</p>';
+    var cards="";
+    cards+=kpiCard("Total spend", g.spend,"spend",{auto:true,note:g.days+" days"});
+    cards+=kpiCard("Installs", g.installs,"int",{auto:true,note:"month to date"});
+    cards+=kpiCard("Cost / install", g.cpi,"cpi",{auto:true,note:"blended"});
+    cards+=kpiCard("Avg spend / day", (g.spend!=null&&g.days)?g.spend/g.days:null,"spend",{auto:true,note:"across "+g.days+" days"});
+    if(g.daily.length<2) return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily Google data for "+monthLabel(curMonth),"Add rows in the Data tab.");
+    var xs=g.daily.map(function(r){return fmtDay(r.date);});
+    var spend=chartSpec("g-spend",xs,[{name:"Spend",color:"var(--accent)",vals:g.daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Daily spend");
+    var cpi=chartSpec("g-cpi",xs,[{name:"Cost / install",color:"var(--teal)",vals:g.daily.map(function(r){var s=n(r.spend),i=n(r.installs);return (s!=null&&i)?s/i:null;}),fmt:"cpi"}],"Cost per install");
+    return head+'<div class="grid g4">'+cards+'</div>'+spend+cpi;
+  }
 
   function socialView(id){
     var cfg=SOCIAL[id],mo=M(),data=mo[id]||{},pk=prevMonthKey(curMonth),pdata=pk?(state.months[pk][id]||{}):null;
@@ -872,6 +903,13 @@
       '<div class="fld" style="margin-left:auto;max-width:220px"><label>Avg spend/day override (blank = auto)</label>'+
       '<input type="number" id="spendOv" step="0.01" placeholder="auto" value="'+(mo.cost.spendOverride!=null?mo.cost.spendOverride:"")+'"></div></div></div>';
 
+    /* Google Ads daily */
+    out+='<div class="panel"><div class="panel-head"><h3>Google Ads · daily</h3><span class="cadence">vs installs</span>'+focBtn('data-focus-ch="google"',state.focus.google)+'</div>'+
+      '<p class="hint">Daily spend and installs (UAC). Cost / install is computed.</p>'+
+      '<div class="table-scroll"><table><thead><tr><th>Date</th><th>Spend</th><th>Installs</th><th>Cost / install</th><th></th></tr></thead>'+
+      '<tbody id="gBody"></tbody></table></div>'+
+      '<div class="actions"><button class="btn" id="gAddDay">+ Add day</button></div></div>';
+
     /* Every channel, in tab order — collections get sub-entries, singles get a form */
     TABS.map(function(t){return t.id;}).filter(function(id){return SOCIAL[id];}).forEach(function(id){
       var cfg=SOCIAL[id];
@@ -921,6 +959,28 @@
       else next=new Date().toISOString().slice(0,10);
       d.push({date:next,spend:null}); save(); render();};
     document.getElementById("spendOv").onchange=function(){mo.cost.spendOverride=this.value===""?null:Number(this.value); save(); render();};
+
+    // Google Ads daily rows
+    var gb=document.getElementById("gBody");
+    if(gb){ if(!mo.google||!Array.isArray(mo.google.daily))mo.google={daily:[]};
+      mo.google.daily.slice().sort(function(a,b){return a.date<b.date?-1:1;}).forEach(function(r){
+        var ci=(n(r.spend)!=null&&n(r.installs))?fmt(n(r.spend)/n(r.installs),"cpi"):"";
+        var tr=document.createElement("tr");
+        tr.innerHTML='<td class="date"><input type="date" value="'+r.date+'" data-gf="date"></td>'+
+          '<td><input type="number" step="any" value="'+(r.spend!=null?r.spend:"")+'" data-gf="spend"></td>'+
+          '<td><input type="number" step="1" value="'+(r.installs!=null?r.installs:"")+'" data-gf="installs"></td>'+
+          '<td style="text-align:right;color:var(--muted);font-family:var(--mono);padding-right:12px">'+ci+'</td>'+
+          '<td style="text-align:center"><button class="del" title="Remove">✕</button></td>';
+        tr.querySelectorAll("input").forEach(function(inp){ inp.onchange=function(){var f=inp.getAttribute("data-gf");
+          if(f==="date")r.date=inp.value; else r[f]=inp.value===""?null:Number(inp.value); save(); render();}; });
+        tr.querySelector(".del").onclick=function(){var i=mo.google.daily.indexOf(r); if(i>-1)mo.google.daily.splice(i,1); save(); render();};
+        gb.appendChild(tr);
+      });
+      document.getElementById("gAddDay").onclick=function(){ var d=mo.google.daily,next;
+        if(d.length){var last=d.slice().sort(function(a,b){return a.date<b.date?-1:1;})[d.length-1];var dt=new Date(last.date+"T00:00:00");dt.setDate(dt.getDate()+1);next=dt.toISOString().slice(0,10);}
+        else next=new Date().toISOString().slice(0,10);
+        d.push({date:next,spend:null,installs:null}); save(); render();};
+    }
 
     document.querySelectorAll('[data-focus-ch]').forEach(function(b){ b.onclick=function(){var id=b.getAttribute("data-focus-ch"); state.focus[id]=!state.focus[id]; save(); render();}; });
     document.querySelectorAll('[data-add-coll]').forEach(function(b){ b.onclick=function(){var id=b.getAttribute("data-add-coll"); items(mo,id).push({name:"",focus:false}); save(); render();}; });
