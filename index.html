@@ -273,13 +273,14 @@
     ["2026-07-17",7874.60,31.76,85.27,33.20,94.10,61.26,129.94,205.83,545.76,304.70,2285.12,2572.91,2728.79],
     ["2026-07-18",9790.16,25.77,126.60,29.09,135.24,51.89,185.95,119.99,313.18,null,null,959.94,1487.60],
     ["2026-07-19",10160.49,49.34,85.32,52.99,92.43,82.95,147.89,null,null,null,null,1144.78,2218.30],
-    ["2026-07-20",7414.54,38.39,65.21,47.47,83.32,93.94,149.98,null,null,401.36,1499.81,null,null],
+    ["2026-07-20",7414.54,38.39,65.21,47.47,83.32,93.94,149.98,null,null,401.36,1499.81,1471.64,2999.61],
     ["2026-07-21",7112.82,29.41,53.14,32.18,58.74,53.03,107.99,220.75,374.95,537.84,1673.98,null,null],
     ["2026-07-22",5347.77,27.11,64.46,31.22,69.94,62.44,126.43,108.45,273.94,686.84,3287.24,null,null],
     ["2026-07-23",8389.44,44.51,76.90,48.04,78.61,88.22,147.39,186.62,272.10,441.10,884.34,null,null],
-    ["2026-07-24",8173.23,36.33,87.37,38.97,99.85,72.67,155.32,206.82,232.99,null,null,null,null],
+    ["2026-07-24",8173.23,36.33,87.37,38.97,99.85,72.67,155.32,206.82,232.99,537.74,931.94,null,null],
     ["2026-07-25",9339.44,38.05,131.89,42.69,136.29,72.93,215.19,201.95,681.45,null,null,null,null],
-    ["2026-07-26",10006.76,39.38,80.37,43.17,88.92,75.68,130.60,null,null,null,null,null,null]
+    ["2026-07-26",10006.76,39.38,80.37,43.17,88.92,75.68,130.60,166.50,278.62,null,null,null,null],
+    ["2026-07-27",8653.18,38.69,77.90,44.47,81.14,80.65,139.10,null,null,null,null,null,null]
   ];
   function julyDaily(){ return JUL.map(function(r){ return {date:r[0],spend:r[1],
     p1_a:r[2],p1_i:r[3],p4_a:r[4],p4_i:r[5],p20_a:r[6],p20_i:r[7],
@@ -326,12 +327,10 @@
       {k:"messages",label:"Messages sent",t:"int"}
     ]},
     google:{name:"Google Ads", g:"GADS", collection:true, itemsKey:"campaigns", entity:"campaign",
-      cadence:"Monthly · per campaign", metrics:[
+      cadence:"Monthly · per campaign · vs installs", metrics:[
       {k:"spend",label:"Spend",t:"spend"},
-      {k:"impressions",label:"Impressions",t:"int"},
-      {k:"clicks",label:"Clicks",t:"int"},
       {k:"installs",label:"Installs",t:"int"},
-      {k:"cpi",label:"CPI",t:"cpi"}
+      {k:"cpi",label:"Cost / install",t:"cpi"}
     ]},
     apple:{name:"Apple Ads", g:"ASA", collection:true, itemsKey:"campaigns", entity:"campaign",
       cadence:"Monthly · per campaign", metrics:[
@@ -368,12 +367,13 @@
     {k:"d3",label:"D3",t:"cpi"},
     {k:"d7",label:"D7",t:"cpi"}
   ];
-  ["google","apple"].forEach(function(id){ SOCIAL[id].metrics=SOCIAL[id].metrics.concat(DEPTH_METRICS); });
+  ["apple"].forEach(function(id){ SOCIAL[id].metrics=SOCIAL[id].metrics.concat(DEPTH_METRICS); });
   var CHANNELS=["cost"].concat(Object.keys(SOCIAL));
   var TABS=[
     {id:"home",label:"Home"},
     {id:"changes",label:"What changed"},
     {id:"tests",label:"Tests"},
+    {id:"model",label:"Model"},
     {id:"cost",label:"Meta Ads", g:"META"},
     {id:"google",label:"Google Ads", g:"GADS"},
     {id:"apple",label:"Apple Ads", g:"ASA"},
@@ -391,6 +391,7 @@
   function seed(){ return {order:["2026-07"],
     focus:{cost:false,instagram:false,reddit:false,whatsapp:false,x:false,discord:false,tests:false},
     tests:[],
+    model:defaultModel(),
     months:{"2026-07":{ cost:{daily:julyDaily(),spendOverride:null}, instagram:{}, x:{}, discord:{},
       reddit:{subs:[{name:"r/dubdub",focus:false}]}, whatsapp:{groups:[{name:"Beta community",focus:false}]},
       meta:{campaigns:[]}, google:{campaigns:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
@@ -407,6 +408,7 @@
     CHANNELS.forEach(function(c){ if(s.focus[c]===undefined) s.focus[c]=false; });
     if(s.focus.tests===undefined) s.focus.tests=false;
     if(!Array.isArray(s.tests)) s.tests=[];
+    if(!s.model||!s.model.curve||!s.model.econ||!s.model.traj) s.model=defaultModel();
     Object.keys(s.months||{}).forEach(function(k){
       var mo=s.months[k];
       mo.cost=mo.cost||{daily:[],spendOverride:null};
@@ -499,6 +501,7 @@
     if(tab==="home")v.innerHTML=homeView();
     else if(tab==="changes"){v.innerHTML=changesView(); wireChanges();}
     else if(tab==="tests"){v.innerHTML=testsView(); wireTests();}
+    else if(tab==="model"){v.innerHTML=modelView(); wireModel();}
     else if(tab==="cost"){v.innerHTML=costView(); wireCost();}
     else if(tab==="data"){v.innerHTML=dataView(); wireData();}
     else if(SOCIAL[tab]&&SOCIAL[tab].collection)v.innerHTML=collectionView(tab);
@@ -691,6 +694,97 @@
     document.querySelectorAll('.test-status').forEach(function(sel){ sel.onchange=function(){ var i=+sel.getAttribute("data-ti"); if(state.tests[i]){state.tests[i].status=sel.value; save(); render();} }; });
     document.querySelectorAll('[data-tfocus]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute("data-tfocus"); state.tests[i].focus=!state.tests[i].focus; save(); render(); }; });
     document.querySelectorAll('[data-tdel]').forEach(function(b){ b.onclick=function(){ state.tests.splice(+b.getAttribute("data-tdel"),1); save(); render(); }; });
+  }
+
+  /* ===== Growth prediction model (ported from predictions.ts) ===== */
+  function defaultModel(){ return {
+    curve:{d1:0.35,d7:0.15,d30:0.06,floor:0.02,horizon:90},
+    econ:{k:0,organicShare:0.3,cpiIos:62,cpiAndroid:25,androidShare:0.6},
+    targetDAU:10000,
+    traj:{days:365,startingDAU:300,improvementDay:30,startN:200,targetN:1500,rampDays:30,tD1:0.5,tD7:0.3,tD30:0.15,tFloor:0.06,tHorizon:90}
+  }; }
+  var MEPS=0.0002;
+  function _loglog(x,xa,ya,xb,yb){ return Math.exp(Math.log(ya)+(Math.log(yb)-Math.log(ya))*((Math.log(x)-Math.log(xa))/(Math.log(xb)-Math.log(xa)))); }
+  function retentionAt(d,c){ if(d<=0)return 1; var a1=Math.max(c.d1,MEPS),a7=Math.max(c.d7,MEPS),a30=Math.max(c.d30,MEPS),f=Math.min(Math.max(c.floor,MEPS),a30);
+    if(d<=7)return _loglog(d,1,a1,7,a7); if(d<=30)return _loglog(d,7,a7,30,a30); if(d>=c.horizon)return f; return _loglog(d,30,a30,c.horizon,f); }
+  function sigmaR(c){ var s=0; for(var d=0;d<=c.horizon;d++)s+=retentionAt(d,c); return s; }
+  function requiredForTarget(target,c,e){ var Sr=sigmaR(c); var N=Sr>0?target/Sr:0; var seed=N*(1-e.k);
+    var organic=seed*e.organicShare, paid=seed*(1-e.organicShare), bcpi=e.androidShare*e.cpiAndroid+(1-e.androidShare)*e.cpiIos;
+    return {Sr:Sr,N:N,seed:seed,organic:organic,paid:paid,bcpi:bcpi,spend:paid*bcpi}; }
+  function mauEstimate(N,c){ var w=0; for(var d=0;d<=c.horizon;d++)w+=retentionAt(Math.max(0,d-29),c); return N*w; }
+  function trajectory(t){ var ceiling=t.targetN*sigmaR(t.targetCurve);
+    if(ceiling<t.targetDAU) return {reachable:false,ceiling:ceiling,crossingDay:null,series:[]};
+    var Nf=function(s){ return s>=t.rampDays?t.targetN:t.startN+(t.targetN-t.startN)*(s/Math.max(1,t.rampDays)); };
+    var curveFor=function(s){ return s>=t.improvementDay?t.targetCurve:t.currentCurve; };
+    var series=[],crossing=null;
+    for(var day=0;day<=t.days;day++){ var dau=t.startingDAU*retentionAt(day,t.currentCurve);
+      for(var s=0;s<=day;s++){ var c=curveFor(s),age=day-s; if(age>c.horizon)continue; dau+=Nf(s)*retentionAt(age,c); }
+      series.push(dau); if(crossing===null&&dau>=t.targetDAU)crossing=day; }
+    return {reachable:true,ceiling:ceiling,crossingDay:crossing,series:series}; }
+
+  function mget(p){ var o=state.model,k=p.split("."); for(var i=0;i<k.length;i++)o=o[k[i]]; return o; }
+  function mset(p,v){ var o=state.model,k=p.split("."); for(var i=0;i<k.length-1;i++)o=o[k[i]]; o[k[k.length-1]]=v; }
+  function minput(p,label,hint){ return '<div class="fld"><label>'+label+(hint?' <span style="color:var(--faint);font-weight:400">'+hint+'</span>':'')+'</label>'+
+    '<input type="number" step="any" data-mpath="'+p+'" value="'+mget(p)+'"></div>'; }
+  function mstat(name,val,sub){ return '<div class="card"><div class="kpi-top"><span class="kpi-name">'+name+'</span></div>'+
+    '<div class="kpi-val">'+val+'</div>'+(sub?'<div class="kpi-foot"><span class="delta flat">'+sub+'</span></div>':'')+'</div>'; }
+  function modelView(){
+    var m=state.model, curve=m.curve, e=m.econ;
+    var req=requiredForTarget(m.targetDAU,curve,e), mau=mauEstimate(req.N,curve), stick=mau>0?m.targetDAU/mau:0;
+    var tCurve={d1:m.traj.tD1,d7:m.traj.tD7,d30:m.traj.tD30,floor:m.traj.tFloor,horizon:m.traj.tHorizon};
+    var tr=trajectory({days:m.traj.days,startingDAU:m.traj.startingDAU,currentCurve:curve,targetCurve:tCurve,
+      improvementDay:m.traj.improvementDay,startN:m.traj.startN,targetN:m.traj.targetN,rampDays:m.traj.rampDays,targetDAU:m.targetDAU});
+
+    var out='<p class="section-label">Growth model <span class="sub">retention → DAU, required spend, and time-to-target · a target-setter, not a forecast</span></p>';
+
+    out+='<div class="panel"><div class="panel-head"><h3>Retention curve &amp; economics</h3><span class="cadence" style="color:var(--muted);background:var(--surface-2)">Σr = '+req.Sr.toFixed(1)+'</span></div>'+
+      '<div class="form-grid">'+
+      minput("curve.d1","D1 retention","0–1")+minput("curve.d7","D7 retention","0–1")+minput("curve.d30","D30 retention","0–1")+
+      minput("curve.floor","Long-term floor","0–1")+minput("curve.horizon","Horizon","days ≥30")+
+      minput("econ.k","Viral coefficient k","0–1")+minput("econ.organicShare","Organic share","0–1")+
+      minput("econ.cpiAndroid","CPI Android","₹")+minput("econ.cpiIos","CPI iOS","₹")+minput("econ.androidShare","Android share of paid","0–1")+
+      '</div></div>';
+
+    out+='<div class="panel"><div class="panel-head"><h3>To reach a DAU target</h3></div>'+
+      '<div class="form-grid">'+minput("targetDAU","Target DAU","")+'</div>'+
+      '<div class="grid gauto" style="padding:10px 12px 4px">'+
+      mstat("Required new users / day", fmt(req.N,"int"), "incl. viral")+
+      mstat("Seed / day", fmt(req.seed,"int"), "before virality")+
+      mstat("Paid / day", fmt(req.paid,"int"), null)+
+      mstat("Organic / day", fmt(req.organic,"int"), null)+
+      mstat("Blended CPI", fmt(req.bcpi,"cpi"), null)+
+      mstat("Daily spend", fmt(req.spend,"spend"), null)+
+      mstat("Monthly spend", fmt(req.spend*30,"spend"), "~30 days")+
+      mstat("Modeled MAU", fmt(mau,"int"), "estimate")+
+      mstat("Stickiness", (stick*100).toFixed(0)+"%", "DAU / MAU")+
+      '</div></div>';
+
+    var trajHead = tr.reachable
+      ? mstat("Reachable ✓", (tr.crossingDay!=null?("Day "+tr.crossingDay):"beyond horizon"), (tr.crossingDay!=null?"first day DAU ≥ target":"within "+m.traj.days+" days"))
+      : mstat("Unreachable ✕", "ceiling "+fmt(tr.ceiling,"int"), "below target — lift retention");
+    out+='<div class="panel"><div class="panel-head"><h3>Trajectory — when do you cross?</h3></div>'+
+      '<div class="form-grid">'+
+      minput("traj.startingDAU","Starting DAU","today")+minput("traj.startN","Start N","users/day")+minput("traj.targetN","Target N","users/day")+
+      minput("traj.rampDays","Ramp","days")+minput("traj.improvementDay","Improvement day","curve switch")+minput("traj.days","Simulate","days")+
+      minput("traj.tD1","Target D1","0–1")+minput("traj.tD7","Target D7","0–1")+minput("traj.tD30","Target D30","0–1")+
+      minput("traj.tFloor","Target floor","0–1")+minput("traj.tHorizon","Target horizon","days")+
+      '</div>'+
+      '<div class="grid g3" style="padding:10px 12px 4px">'+trajHead+
+      mstat("Ceiling at target N", fmt(tr.ceiling,"int"), "steady-state")+
+      mstat("Σr (target curve)", sigmaR(tCurve).toFixed(1), "vs "+req.Sr.toFixed(1)+" now")+
+      '</div>';
+    if(tr.reachable && tr.series.length>1){
+      out+=chartSpec("model-traj", tr.series.map(function(_,i){return "D"+i;}),
+        [{name:"DAU",color:"var(--accent)",vals:tr.series,area:true,fmt:"int"}], "Projected DAU");
+    }
+    out+='</div>';
+    out+='<p class="foot-note" style="text-align:left">Retention is entered as a fraction (0.35 = 35%). The tail past D30 decays to your floor by the horizon — own those two numbers. Spend divides by Σr, so retention is the dominant lever.</p>';
+    return out;
+  }
+  function wireModel(){
+    document.querySelectorAll('#view input[data-mpath]').forEach(function(inp){
+      inp.onchange=function(){ var v=inp.value===""?0:Number(inp.value); if(!isNaN(v)){ mset(inp.getAttribute("data-mpath"),v); save(); render(); } };
+    });
   }
 
   var costState={act:"p1",ret:"d1"};
