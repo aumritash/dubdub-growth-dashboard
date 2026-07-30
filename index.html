@@ -283,7 +283,7 @@
     ["2026-07-25",9339.44,38.05,131.89,42.69,136.29,72.93,215.19,201.95,681.45,875.12,1362.90,null,null],
     ["2026-07-26",10006.76,39.38,80.37,43.17,88.92,75.68,130.60,166.50,278.62,485.62,696.55,null,null],
     ["2026-07-27",8653.18,38.69,77.90,44.47,81.14,80.65,139.10,158.61,259.66,null,null,null,null],
-    ["2026-07-28",7720.37,31.71,68.49,34.38,69.80,63.92,110.00,194.79,226.86,null,null,null,null],
+    ["2026-07-28",10034.42,31.71,68.49,34.38,69.80,63.92,110.00,194.79,226.86,null,null,null,null],
     ["2026-07-29",6377.89,28.48,89.60,29.76,96.77,53.49,151.21,null,null,null,null,null,null]
   ];
   function julyDaily(){ return JUL.map(function(r){ return {date:r[0],spend:r[1],
@@ -315,11 +315,12 @@
       {k:"weeklyContributors",label:"Weekly contributors",t:"int"},
       {k:"posts",label:"Posts (7d)",t:"int"}
     ]},
-    whatsapp:{name:"WhatsApp", g:"WA", collection:true, itemsKey:"groups", entity:"group",
+    whatsapp:{name:"WhatsApp", g:"WA", collection:true, itemsKey:"groups", entity:"group", hasDate:true,
       cadence:"Rolling 7-day · updated weekly", metrics:[
       {k:"members",label:"Members",t:"int"},
       {k:"newMembers",label:"Net new members",t:"int",delta:true},
       {k:"activeMembers",label:"Weekly active members",t:"int"},
+      {k:"views",label:"Views",t:"int"},
       {k:"messages",label:"Messages (7d)",t:"int"}
     ]},
     x:{name:"X", g:"X", metrics:[
