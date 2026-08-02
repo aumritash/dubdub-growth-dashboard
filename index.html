@@ -281,12 +281,21 @@
     ["2026-07-23",8389.44,44.51,76.90,48.04,78.61,88.22,147.39,186.62,272.10,441.10,884.34,693.15,1179.12],
     ["2026-07-24",8173.23,36.33,87.37,38.97,99.85,72.67,155.32,206.82,232.99,537.74,931.94,null,null],
     ["2026-07-25",9339.44,38.05,131.89,42.69,136.29,72.93,215.19,201.95,681.45,875.12,1362.90,null,null],
-    ["2026-07-26",10006.76,39.38,80.37,43.17,88.92,75.68,130.60,166.50,278.62,485.62,696.55,null,null],
+    ["2026-07-26",10006.76,39.38,80.37,43.17,88.92,75.68,130.60,166.50,278.62,485.62,696.55,971.24,1044.83],
     ["2026-07-27",8653.18,38.69,77.90,44.47,81.14,80.65,139.10,158.61,259.66,475.83,556.41,null,null],
-    ["2026-07-28",10034.42,31.71,68.49,34.38,69.80,63.92,110.00,194.79,226.86,null,null,null,null],
-    ["2026-07-29",6377.89,28.48,89.60,29.76,96.77,53.49,151.21,359.87,403.22,null,null,null,null],
-    ["2026-07-30",4489.40,23.53,80.49,25.41,97.98,42.19,160.97,null,null,null,null,null,null]
+    ["2026-07-28",10034.42,31.71,68.49,34.38,69.80,63.92,110.00,194.79,226.86,818.12,518.54,null,null],
+    ["2026-07-29",6377.89,28.48,89.60,29.76,96.77,53.49,151.21,359.87,403.22,565.51,1209.66,null,null],
+    ["2026-07-30",4489.40,23.53,80.49,25.41,97.98,42.19,160.97,null,null,447.16,751.20,null,null],
+    ["2026-07-31",10787.93,40.12,78.78,42.89,78.78,74.03,117.16,177.68,304.62,null,null,null,null]
   ];
+  // August daily: [date, spend, p1A,p1I, p4A,p4I, p20A,p20I, d1A,d1I, d3A,d3I, d7A,d7I]
+  var AUG=[
+    ["2026-08-01",10985.77,35.81,70.99,37.10,73.14,59.79,107.27,186.62,241.37,null,null,null,null],
+    ["2026-08-02",10881.86,30.10,125.65,31.71,125.65,48.71,181.09,null,null,null,null,null,null]
+  ];
+  function augustDaily(){ return AUG.map(function(r){ return {date:r[0],spend:r[1],
+    p1_a:r[2],p1_i:r[3],p4_a:r[4],p4_i:r[5],p20_a:r[6],p20_i:r[7],
+    d1_a:r[8],d1_i:r[9],d3_a:r[10],d3_i:r[11],d7_a:r[12],d7_i:r[13]}; }); }
   function julyDaily(){ return JUL.map(function(r){ return {date:r[0],spend:r[1],
     p1_a:r[2],p1_i:r[3],p4_a:r[4],p4_i:r[5],p20_a:r[6],p20_i:r[7],
     d1_a:r[8],d1_i:r[9],d3_a:r[10],d3_i:r[11],d7_a:r[12],d7_i:r[13]}; }); }
@@ -394,14 +403,16 @@
 
   /* State */
   var state=migrate(load()), curMonth=state.order[state.order.length-1]||"2026-07", tab="home";
-  function seed(){ return {order:["2026-07"],
+  function seed(){ return {order:["2026-07","2026-08"],
     focus:{cost:false,instagram:false,reddit:false,whatsapp:false,x:false,discord:false,tests:false},
     tests:[],
     model:defaultModel(),
     months:{"2026-07":{ cost:{daily:julyDaily(),spendOverride:null}, instagram:{}, x:{}, discord:{},
       reddit:{subs:[{name:"r/dubdub",focus:false}]}, whatsapp:{groups:[{name:"Beta community",focus:false}]},
       meta:{campaigns:[]}, google:{daily:googleDaily()}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
-      notes:[] }}}; }
+      notes:[] },
+    "2026-08":(function(){ var m=blankMonth(); m.cost.daily=augustDaily(); return m; })()
+    }}; }
   function blankMonth(){ return {cost:{daily:[],spendOverride:null}, instagram:{}, x:{}, discord:{},
     reddit:{subs:[]}, whatsapp:{groups:[]},
     meta:{campaigns:[]}, google:{daily:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]},
