@@ -122,6 +122,7 @@
   .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
   .btn.primary:hover{filter:brightness(1.06); color:#fff}
   .btn.ghost{background:transparent}
+  .btn.on{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
 
   .foc{display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--muted); cursor:pointer; font-family:var(--ui); white-space:nowrap}
   .foc:hover{border-color:var(--border-2)}
@@ -226,6 +227,7 @@
         <span class="lbl" id="mLabel">Jul 2026</span>
         <button id="mNext" aria-label="Next month">›</button>
       </div>
+      <button class="btn ghost" id="tillBtn" title="Toggle all-time view" style="padding:8px 13px">Till date</button>
       <button class="icon-btn" id="dataBtn" title="Data — manual entry" aria-label="Data">⚙</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◑</button>
     </div>
@@ -441,6 +443,24 @@
     });
     return s;
   }
+  var tillDate=false;
+  function periodLabel(){ return tillDate ? "Till date" : monthLabel(curMonth); }
+  function aggMonth(){
+    var acc={cost:{daily:[],spendOverride:null}, google:{daily:[]}, instagram:{}, x:{}, discord:{},
+      reddit:{subs:[]}, whatsapp:{groups:[]}, apple:{campaigns:[]}, influencers:{people:[]}, collabs:{partners:[]}, notes:[]};
+    state.order.forEach(function(k){ var mo=state.months[k]; if(!mo)return;
+      if(mo.cost&&mo.cost.daily) acc.cost.daily=acc.cost.daily.concat(mo.cost.daily);
+      if(mo.google&&mo.google.daily) acc.google.daily=acc.google.daily.concat(mo.google.daily);
+      ["reddit","whatsapp","apple","influencers","collabs"].forEach(function(id){
+        var key=SOCIAL[id].itemsKey; if(mo[id]&&mo[id][key]) acc[id][key]=acc[id][key].concat(mo[id][key]); });
+      ["instagram","x","discord"].forEach(function(id){
+        if(mo[id]) SOCIAL[id].metrics.forEach(function(m){ if(n(mo[id][m.k])!=null) acc[id][m.k]=mo[id][m.k]; }); });
+      if(Array.isArray(mo.notes)) acc.notes=acc.notes.concat(mo.notes);
+    });
+    acc.cost.daily.sort(function(a,b){return a.date<b.date?-1:1;});
+    acc.google.daily.sort(function(a,b){return a.date<b.date?-1:1;});
+    return acc;
+  }
   function save(){ lastLocalEdit=Date.now(); try{localStorage.setItem(STORE,JSON.stringify(state));}catch(e){} if(REMOTE) remotePush(); }
   function sbHeaders(extra){ var h={apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:"Bearer "+CONFIG.SUPABASE_ANON_KEY}; if(extra)for(var k in extra)h[k]=extra[k]; return h; }
   function remotePush(){ clearTimeout(pushTimer); pushTimer=setTimeout(function(){
@@ -460,7 +480,7 @@
       } else if(initial){ remotePush(); }
     }).catch(function(){});
   }
-  function M(){ return state.months[curMonth]; }
+  function M(){ return tillDate ? aggMonth() : state.months[curMonth]; }
   function items(mo,id){ var cfg=SOCIAL[id]; if(!mo[id])mo[id]={}; if(!mo[id][cfg.itemsKey])mo[id][cfg.itemsKey]=[]; return mo[id][cfg.itemsKey]; }
   function collTotal(mo,id,key){ return sum(items(mo,id).map(function(it){return n(it[key]);})); }
 
@@ -511,9 +531,10 @@
 
   /* ================= VIEWS ================= */
   function render(){
-    document.getElementById("mLabel").textContent=monthLabel(curMonth);
-    document.getElementById("mPrev").disabled=state.order.indexOf(curMonth)<=0;
-    document.getElementById("mNext").disabled=state.order.indexOf(curMonth)>=state.order.length-1;
+    document.getElementById("mLabel").textContent=periodLabel();
+    document.getElementById("mPrev").disabled=tillDate||state.order.indexOf(curMonth)<=0;
+    document.getElementById("mNext").disabled=tillDate||state.order.indexOf(curMonth)>=state.order.length-1;
+    var tb=document.getElementById("tillBtn"); if(tb) tb.classList.toggle("on",tillDate);
     renderTabs();
     var v=document.getElementById("view");
     if(tab==="home")v.innerHTML=homeView();
@@ -549,7 +570,7 @@
   }
   function totalSpendAll(mo){ return sum(channelSpends(mo).map(function(x){return x.v;})); }
   function homeView(){
-    var mo=M(),c=costAgg(mo),pk=prevMonthKey(curMonth),pmo=pk?state.months[pk]:null;
+    var mo=M(),c=costAgg(mo),pk=(tillDate?null:prevMonthKey(curMonth)),pmo=pk?state.months[pk]:null;
     var chSpend=channelSpends(mo), totalAll=totalSpendAll(mo);
     var avgAll=(totalAll!=null&&c.days)?totalAll/c.days:null;
     var prevTotal=pmo?totalSpendAll(pmo):null;
@@ -567,7 +588,7 @@
     comm+=kpiCard("WhatsApp members",wa,"int",{auto:true,note:"all groups"});
     var spendChart=c.days>1?chartSpec("home-spend",mo.cost.daily.map(function(r){return fmtDay(r.date);}),
       [{name:"Spend",color:"var(--accent)",vals:mo.cost.daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Meta daily spend"):"";
-    return '<p class="section-label">Spend <span class="sub">'+monthLabel(curMonth)+' · every channel combined</span></p>'+
+    return '<p class="section-label">Spend <span class="sub">'+periodLabel()+' · every channel combined</span></p>'+
       '<div class="grid g4">'+a+'</div>'+
       '<div style="height:18px"></div>'+
       '<p class="section-label">Spend by channel</p>'+
@@ -653,20 +674,20 @@
 
   function noteDate(ts){ return new Date(ts||Date.now()).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
   function changesView(){
-    var mo=M(), pk=prevMonthKey(curMonth), pmo=pk?state.months[pk]:null, notes=mo.notes||[];
-    var head='<p class="section-label">What changed <span class="sub">'+monthLabel(curMonth)+' · auto-detected from your data, plus your own notes</span></p>';
+    var mo=M(), pk=(tillDate?null:prevMonthKey(curMonth)), pmo=pk?state.months[pk]:null, notes=mo.notes||[];
+    var head='<p class="section-label">What changed <span class="sub">'+periodLabel()+' · auto-detected from your data, plus your own notes</span></p>';
     var noteCards=notes.length? notes.map(function(nt,i){
       return '<div class="note-card"><div class="note-head"><span class="note-date">'+noteDate(nt.ts)+'</span>'+
         '<button class="del" data-note-del="'+i+'" title="Delete note">✕</button></div>'+
         '<textarea class="note-text" data-note-idx="'+i+'" rows="2" placeholder="Write a note…">'+(nt.text||"").replace(/</g,"&lt;")+'</textarea></div>';
-    }).join("") : '<p class="hint" style="padding:2px 4px 8px">No notes yet — jot down context, hypotheses, or decisions for '+monthLabel(curMonth)+'.</p>';
+    }).join("") : '<p class="hint" style="padding:2px 4px 8px">No notes yet — jot down context, hypotheses, or decisions for '+periodLabel()+'.</p>';
     var notesPanel='<div class="panel"><div class="panel-head"><h3>Notes</h3><button class="btn" id="addNote">+ Add note</button></div>'+
       '<div style="padding:4px 12px 6px">'+noteCards+'</div></div>';
     var list=computeChanges(mo, pmo, pk);
     var signals='<p class="section-label" style="margin-top:24px">Signals from the data <span class="sub">recomputed as you edit the numbers</span></p>';
     signals += list.length? '<div class="chg">'+list.map(function(c){
       return '<div class="chg-card '+c.kind+'"><div class="chg-tag">'+c.tag+'</div><h4>'+c.head+'</h4><p>'+c.body+'</p></div>';
-    }).join("")+'</div>' : '<div class="empty-state">Not enough data yet to surface signals for '+monthLabel(curMonth)+'. Add daily numbers under Data.</div>';
+    }).join("")+'</div>' : '<div class="empty-state">Not enough data yet to surface signals for '+periodLabel()+'. Add daily numbers under Data.</div>';
     return head+notesPanel+signals;
   }
   function wireChanges(){
@@ -821,9 +842,9 @@
     cards+=kpiCard("Total spend",c.totalSpend,"spend",{auto:true,note:"month to date"});
     cards+=kpiCard("1st Play · Android",c.depth.p1.a,"cpi",{auto:true,note:c.depth.p1.i!=null?("iOS "+fmt(c.depth.p1.i,"cpi")):"Android only"});
     cards+=kpiCard("D1 · Android",c.depth.d1.a,"cpi",{auto:true,note:c.depth.d1.i!=null?("iOS "+fmt(c.depth.d1.i,"cpi")):"Android only"});
-    var head='<p class="section-label">Meta Ads <span class="sub">'+monthLabel(curMonth)+' · spend &amp; cost to buy a user to each milestone</span>'+focusChip(state.focus.cost)+'</p>';
+    var head='<p class="section-label">Meta Ads <span class="sub">'+periodLabel()+' · spend &amp; cost to buy a user to each milestone</span>'+focusChip(state.focus.cost)+'</p>';
     var daily=mo.cost.daily||[];
-    if(daily.length<2)return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily acquisition data for "+monthLabel(curMonth),"Add rows in the Data tab.");
+    if(daily.length<2)return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily acquisition data for "+periodLabel(),"Add rows in the Data tab.");
     var xs=daily.map(function(r){return fmtDay(r.date);});
     var aL={p1:"1st Play",p4:"4th Play",p20:"20th Play"},rL={d1:"D1",d3:"D3",d7:"D7"},ak=costState.act,rk=costState.ret;
     var spend=chartSpec("cost-spend",xs,[{name:"Spend",color:"var(--accent)",vals:daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Daily spend");
@@ -850,13 +871,13 @@
   }
   function googleView(){
     var mo=M(), g=googleAgg(mo);
-    var head='<p class="section-label">Google Ads <span class="sub">'+monthLabel(curMonth)+' · daily spend &amp; cost per install</span>'+focusChip(state.focus.google)+'</p>';
+    var head='<p class="section-label">Google Ads <span class="sub">'+periodLabel()+' · daily spend &amp; cost per install</span>'+focusChip(state.focus.google)+'</p>';
     var cards="";
     cards+=kpiCard("Total spend", g.spend,"spend",{auto:true,note:g.days+" days"});
     cards+=kpiCard("Installs", g.installs,"int",{auto:true,note:"month to date"});
     cards+=kpiCard("Cost / install", g.cpi,"cpi",{auto:true,note:"blended"});
     cards+=kpiCard("Avg spend / day", (g.spend!=null&&g.days)?g.spend/g.days:null,"spend",{auto:true,note:"across "+g.days+" days"});
-    if(g.daily.length<2) return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily Google data for "+monthLabel(curMonth),"Add rows in the Data tab.");
+    if(g.daily.length<2) return head+'<div class="grid g4">'+cards+'</div><div style="height:14px"></div>'+emptyState("No daily Google data for "+periodLabel(),"Add rows in the Data tab.");
     var xs=g.daily.map(function(r){return fmtDay(r.date);});
     var spend=chartSpec("g-spend",xs,[{name:"Spend",color:"var(--accent)",vals:g.daily.map(function(r){return n(r.spend);}),area:true,fmt:"spend"}],"Daily spend");
     var cpi=chartSpec("g-cpi",xs,[{name:"Cost / install",color:"var(--teal)",vals:g.daily.map(function(r){var s=n(r.spend),i=n(r.installs);return (s!=null&&i)?s/i:null;}),fmt:"cpi"}],"Cost per install");
@@ -864,10 +885,10 @@
   }
 
   function socialView(id){
-    var cfg=SOCIAL[id],mo=M(),data=mo[id]||{},pk=prevMonthKey(curMonth),pdata=pk?(state.months[pk][id]||{}):null;
-    var head='<p class="section-label">'+cfg.name+' <span class="sub">'+monthLabel(curMonth)+' · owned-channel metrics</span>'+focusChip(state.focus[id])+'</p>';
+    var cfg=SOCIAL[id],mo=M(),data=mo[id]||{},pk=(tillDate?null:prevMonthKey(curMonth)),pdata=pk?(state.months[pk][id]||{}):null;
+    var head='<p class="section-label">'+cfg.name+' <span class="sub">'+periodLabel()+' · owned-channel metrics</span>'+focusChip(state.focus[id])+'</p>';
     if(!cfg.metrics.some(function(m){return n(data[m.k])!==null;}))
-      return head+emptyState("No "+cfg.name+" data for "+monthLabel(curMonth),"Fill in this month's numbers in the Data tab.");
+      return head+emptyState("No "+cfg.name+" data for "+periodLabel(),"Fill in this month's numbers in the Data tab.");
     var cards=cfg.metrics.map(function(m){ var v=n(data[m.k]),opts={auto:false};
       if(m.delta)opts.note="net add this month"; else if(pdata){var d=deltaPill(v,n(pdata[m.k]),true); if(d)opts.delta=d;}
       return kpiCard(m.label,v,m.t,opts); }).join("");
@@ -876,7 +897,7 @@
 
   function collectionView(id){
     var cfg=SOCIAL[id],mo=M(),arr=items(mo,id);
-    var head='<p class="section-label">'+cfg.name+' <span class="sub">'+monthLabel(curMonth)+'</span>'+
+    var head='<p class="section-label">'+cfg.name+' <span class="sub">'+periodLabel()+'</span>'+
       '<span class="cadence">'+cfg.cadence+'</span>'+focusChip(state.focus[id])+'</p>';
     if(arr.length===0)return head+emptyState("No "+cfg.entity+"s yet","Add "+cfg.entity+"s in the Data tab.");
     var totals=cfg.metrics.map(function(m){return kpiCard(m.label,collTotal(mo,id,m.k),m.t,{auto:true,note:"all "+cfg.entity+"s"});}).join("");
@@ -901,7 +922,7 @@
   function focBtn(attrs,on){ return '<button class="foc'+(on?" on":"")+'" '+attrs+'>'+(on?"● Focus":"○ Not focus")+'</button>'; }
   function dataView(){
     var mo=M();
-    var out='<p class="section-label">Data · manual entry <span class="sub">'+monthLabel(curMonth)+' · everything here is tagged '+
+    var out='<p class="section-label">Data · manual entry <span class="sub">'+periodLabel()+' · everything here is tagged '+
       '<span class="chip manual" style="vertical-align:middle">manual</span> · flag what you\'re working on with Focus</span></p>'+
       '<div class="actions" style="padding:0 0 6px">'+
       '<button class="btn" id="addMonth">+ Add next month</button>'+
@@ -1018,7 +1039,7 @@
       state.months["2026-07"].cost.daily=julyDaily(); save(); curMonth="2026-07"; render();}};
     document.getElementById("exportJson").onclick=function(){var blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
       var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="dubdub-growth.json"; a.click(); URL.revokeObjectURL(a.href);};
-    document.getElementById("clearMonth").onclick=function(){ if(confirm("Clear ALL data for "+monthLabel(curMonth)+"?")){state.months[curMonth]=blankMonth(); save(); render();}};
+    document.getElementById("clearMonth").onclick=function(){ if(confirm("Clear ALL data for "+periodLabel()+"?")){state.months[curMonth]=blankMonth(); save(); render();}};
   }
 
   /* ================= CHARTS ================= */
@@ -1079,7 +1100,8 @@
   (function(){var s=null; try{s=localStorage.getItem("dubdub-theme");}catch(e){} if(s)document.documentElement.setAttribute("data-theme",s);
     document.getElementById("themeBtn").onclick=function(){var c=document.documentElement.getAttribute("data-theme"); if(!c)c=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
       var nx=c==="dark"?"light":"dark"; document.documentElement.setAttribute("data-theme",nx); try{localStorage.setItem("dubdub-theme",nx);}catch(e){} render();};})();
-  document.getElementById("dataBtn").onclick=function(){ tab="data"; render(); };
+  document.getElementById("dataBtn").onclick=function(){ tillDate=false; tab="data"; render(); };
+  document.getElementById("tillBtn").onclick=function(){ tillDate=!tillDate; if(tillDate&&tab==="data")tab="home"; render(); };
   document.getElementById("mPrev").onclick=function(){var i=state.order.indexOf(curMonth); if(i>0){curMonth=state.order[i-1]; render();}};
   document.getElementById("mNext").onclick=function(){var i=state.order.indexOf(curMonth); if(i<state.order.length-1){curMonth=state.order[i+1]; render();}};
   render();
